@@ -9,28 +9,58 @@ import Foundation
 import SwiftUI
 
 struct NewsView: View {
-    @EnvironmentObject var spaceData: APIClient
+    @ObservedObject var spaceData: APIClient
     @Environment(\.openURL) var openURL
-    private var textWidth: CGFloat = 300
     
     var body: some View {
-        List {
-            ForEach(spaceData.articles) { article in
-                NewsArticle(title: article.title, url: article.url, site: article.newsSite, summary: article.summary)
-                    .onTapGesture {
-                        openURL(URL(string: article.url)!)
-                    }
+        List(spaceData.articles) { article in
+            NewsArticle(title: article.title, articleUrl: article.url, imageUrl: article.imageUrl ?? "Error",site: article.newsSite ?? "Error", summary: article.summary ?? "Error")
+                .onTapGesture {
+                    openURL(URL(string: article.url)!)
+                }
+        }
+        .onAppear {
+            if spaceData.articles.isEmpty {
+                spaceData.getData()
             }
         }
-        .refreshable {
+        .onReachBottom(perform: {
             spaceData.getData()
+        })
+    }
+}
+
+// Extension to detect when the list reaches the bottom
+extension View {
+    func onReachBottom(perform action: @escaping () -> Void) -> some View {
+        self.onAppear {
+            NotificationCenter.default.addObserver(forName: .reachBottom, object: nil, queue: .main) { _ in
+                action()
+            }
         }
     }
 }
 
-struct NewsView_Previews: PreviewProvider {
-    static var previews: some View {
-        NewsView()
-            .environmentObject(APIClient())
+// Notification when the list reaches the bottom
+extension Notification.Name {
+    static let reachBottom = Notification.Name("reachBottomNotification")
+}
+
+// Modifier for ScrollView/List to notify when reaching the bottom
+struct ReachBottomModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    NotificationCenter.default.post(name: .reachBottom, object: nil)
+                }
+            }
+    }
+}
+
+// Apply the modifier to the last element in the list
+extension View {
+    func reachBottom() -> some View {
+        modifier(ReachBottomModifier())
     }
 }

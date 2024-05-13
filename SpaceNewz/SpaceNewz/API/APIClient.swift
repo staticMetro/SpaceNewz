@@ -8,57 +8,96 @@
 
 import Foundation
 
+// Define a model for the API data
 struct SpaceData: Codable, Identifiable {
     var id: Int
     var title: String
     var url: String
-    var imageUrl: String
-    var newsSite: String
-    var summary: String
-    var publishedAt: String
+    var imageUrl: String?
+    var newsSite: String?
+    var summary: String?
+    var publishedAt: String?
+    var updatedAt: String?
     
     enum CodingKeys: String, CodingKey {
         case id
         case title
         case url
-        case imageUrl
-        case newsSite
-        case summary
-        case publishedAt
+        case imageUrl = "image_url"
+        case newsSite = "news_site"
+        case summary = "summary"
+        case publishedAt = "published_at"
+        case updatedAt = "updated_at"
     }
 }
 
-@MainActor class APIClient: ObservableObject {
-    @Published var articles = [SpaceData]()
-    
+
+// Define a model for the API response
+struct ApiResponse: Decodable {
+    let count: Int
+    let next: String?
+    let previous: String?
+    let results: [SpaceData]
+}
+
+// DateFormatter extension for ISO 8601 date format
+extension DateFormatter {
+    static let iso8601Full: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+        formatter.calendar = Calendar(identifier: .iso8601)
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter
+    }()
+}
+
+
+@MainActor
+class APIClient: ObservableObject {
+    @Published var articles: [SpaceData] = []
+    private var currentPageURL: URL? = URL(string: "https://api.spaceflightnewsapi.net/v4/articles/?format=json&limit=10")
+    private var isLoading = false
+
     func getData() {
-        guard let url = URL(string: "https://api.spaceflightnewsapi.net/v4/articles/") else {
-            print("Invalid URL")
-            return
-        }
-        
-        let request = URLRequest(url: url)
-        
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            guard let data = data else {
+        guard !isLoading, let url = currentPageURL else { return }
+        isLoading = true
+
+        URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
+            guard let self = self else { return }
+            
+            if let error = error {
                 DispatchQueue.main.async {
-                    self.articles = [SpaceData(id: 0, title: "No data", url: "No data", imageUrl: "No data", newsSite: "No data", summary: "Try Refreshing when you get Internet Connection", publishedAt: "No data")]
+                    self.isLoading = false
                 }
+                print("Network request error: \(error)")
                 return
             }
-            DispatchQueue.global().async {
-              do {
-                let decodedResponse = try JSONDecoder().decode([SpaceData].self, from: data)
+            
+            guard let data = data else {
                 DispatchQueue.main.async {
-                  print("Loaded New Data from API. Articles: \(decodedResponse.count)")
-                  self.articles = decodedResponse
+                    self.isLoading = false
                 }
-              } catch {
-                // Handle decoding error here
-                print("Error decoding data: \(error)")
-              }
+                print("No data received")
+                return
             }
-
+            
+            do {
+                let decoder = JSONDecoder()
+//                decoder.keyDecodingStrategy = .convertFromSnakeCase
+//                decoder.dateDecodingStrategy = .formatted(DateFormatter.iso8601Full)
+                let apiResponse = try decoder.decode(ApiResponse.self, from: data)
+                DispatchQueue.main.async {
+                    self.articles.append(contentsOf: apiResponse.results)
+                    self.currentPageURL = URL(string: apiResponse.next ?? "")
+                    self.isLoading = false
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                }
+                print("Error decoding data: \(error)")
+            }
         }.resume()
     }
 }

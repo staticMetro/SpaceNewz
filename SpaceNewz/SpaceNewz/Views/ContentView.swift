@@ -9,27 +9,27 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var spaceData = APIClient()
-    @State private var opac = 0.0
     
     var body: some View {
         NavigationView {
             VStack {
-                NewsView()
-                    .opacity(opac)
+//                if spaceData.articles.isEmpty {
+//                    Text("Loading...")
+//                } else {
+                    NewsView(spaceData: spaceData)
+//                }
             }
             .navigationTitle("SpaceNewz")
-            .environmentObject(spaceData)
-            .onAppear {
-                spaceData.getData()
-                
-                withAnimation(.easeInOut(duration: 2.0)) {
-                    opac = 1.0
-                }
-            }
         }
     }
 }
 
+//struct ContentView_Previews: PreviewProvider {
+//    static var previews: some View {
+//        ContentView()
+//    }
+//}
+    
 #Preview {
     ContentView()
 }
